@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kompas-sdk"
+version = "0.1.0"
+description = "Python SDK for building 3D parts in KOMPAS-3D v24 via COM (API5)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["pywin32>=306; sys_platform == 'win32'"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+kompas-cylinder = "kompas_sdk.models.cylinder:main"
+
+[tool.setuptools.packages.find]
+include = ["kompas_sdk*"]

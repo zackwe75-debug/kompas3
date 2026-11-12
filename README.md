@@ -1,0 +1,66 @@
+# kompas-sdk
+
+Python SDK for building 3D parts in **KOMPAS-3D v24** through its COM API (API5),
+plus a parametric model of the «Цилиндр» housing (АЛ8 ГОСТ 2685-75) from the A1 drawing.
+
+## Requirements
+
+- Windows with KOMPAS-3D v24 installed (registered COM server `Kompas.Application.5`)
+- Python 3.9+ (match the bitness of KOMPAS, normally 64-bit)
+- `pywin32`
+
+```bat
+pip install -e .
+```
+
+## Build the cylinder
+
+```bat
+kompas-cylinder --out C:\models\cylinder.m3d
+:: or
+python -m kompas_sdk.models.cylinder --out cylinder.m3d --windows Y
+```
+
+KOMPAS starts (or attaches to the running instance), builds the part and saves the `.m3d`.
+
+## Use the SDK
+
+```python
+from kompas_sdk import KompasApp, SYMMETRIC, BOTH, bolt_circle
+
+app = KompasApp()
+doc = app.new_part("Фланец")
+pb = doc.builder
+
+with pb.sketch("XY") as s:
+    s.circle((0, 0), 200)
+pb.extrude(s, 20, SYMMETRIC)
+
+with pb.sketch("XY") as s:
+    s.circles(bolt_circle(160, 8), 12)
+pb.cut(s, mode=BOTH, through=True)
+
+doc.save("flange.m3d")
+```
+
+`PartBuilder` provides `plane`, `offset_plane`, `offset_plane_pair`, `sketch` (line, arc,
+circle, rect, polyline), `extrude` and `cut` with modes `NORMAL`, `REVERSE`, `BOTH`, `SYMMETRIC`.
+
+## Cylinder model notes
+
+All dimensions live in `CylinderParams` (`kompas_sdk/models/cylinder.py`). Bore axis is Z.
+Simplifications versus the drawing:
+
+- internal casting cavities, draft angles and 2 mm casting fillets are not modelled;
+- threads are tap-drill holes (M20 → Ø17.5, M16 → Ø14, M36 → Ø32, M62 → Ø60);
+- features shown on one face (Ø320 boss, lugs, 140×140 pad) are mirrored to the opposite face;
+- the 16 M20 holes are evenly spaced (drawing has 30°/10° pitch groups — adjust
+  `flange_hole_start_deg` / replace `bolt_circle` if exact angles are needed).
+
+## Tests
+
+Tests run without KOMPAS using a fake COM object:
+
+```bash
+pip install pytest && pytest
+```
