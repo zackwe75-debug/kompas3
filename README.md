@@ -15,13 +15,14 @@ pip install -e .
 
 ## Single-file scripts
 
-`kompas_cylinder.py` and `kompas_korpus.py` in the repo root are the whole SDK plus one model
+`kompas_cylinder.py`, `kompas_korpus.py` and `kompas_kartridzh.py` in the repo root are the whole SDK plus one model
 in a single file (regenerate with `python tools/bundle.py korpus`)
 — no install needed besides `pywin32`:
 
 ```bat
 python kompas_cylinder.py --out C:\models\cylinder.m3d
 python kompas_korpus.py --out C:\models\korpus.m3d
+python kompas_kartridzh.py --out C:\models\kartridzh.m3d
 ```
 
 ## Build the cylinder

@@ -38,9 +38,13 @@ class Sketch:
         self._m = to_local or (lambda a, b: (a, b))
         self._mirrored = mirrored
 
-    def line(self, p1: Point, p2: Point):
+    def line(self, p1: Point, p2: Point, style: int = c.STYLE_MAIN):
         (x1, y1), (x2, y2) = self._m(*p1), self._m(*p2)
-        return self.doc2d.ksLineSeg(x1, y1, x2, y2, c.STYLE_MAIN)
+        return self.doc2d.ksLineSeg(x1, y1, x2, y2, style)
+
+    def axis(self, p1: Point, p2: Point):
+        """Axial line; a revolve uses it as the rotation axis."""
+        return self.line(p1, p2, c.STYLE_AXIS)
 
     def circle(self, center: Point, diameter: float):
         x, y = self._m(*center)
@@ -189,6 +193,31 @@ class PartBuilder:
         with self.world_sketch(plane) as s:
             draw(s)
         return self.cut(s, mode=BOTH, through=True)
+
+    def revolve(self, plane: str, profile: list[Point], axis: tuple[Point, Point],
+                cut: bool = False, angle: float = 360.0):
+        """Revolve a closed world-coordinate profile about ``axis`` (both in ``plane``)."""
+        with self.world_sketch(plane) as s:
+            s.polyline(profile)
+            s.axis(*axis)
+        if cut:
+            if not self._has_body:
+                raise RuntimeError("cut requires an existing body")
+            kind = c.o3d_cutRotated
+        else:
+            kind = c.o3d_bossRotated if self._has_body else c.o3d_baseRotated
+        entity = self.part.NewEntity(kind)
+        d = entity.GetDefinition()
+        if cut:
+            d.cut = True
+        d.directionType = c.dtNormal
+        d.SetSideParam(True, angle)
+        d.SetSketch(s.entity)
+        if not entity.Create():
+            raise RuntimeError(f"KOMPAS failed to create revolve feature (type {kind})")
+        self._has_body = self._has_body or not cut
+        self.features.append(("cut" if cut else "revolve", entity))
+        return entity
 
     # --- solid features ---------------------------------------------------
     def extrude(self, sketch: Sketch, depth: float, mode: str = NORMAL, through: bool = False):

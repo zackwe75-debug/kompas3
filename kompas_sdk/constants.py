@@ -17,6 +17,9 @@ o3d_planeOffset = 14
 o3d_baseExtrusion = 24
 o3d_bossExtrusion = 25
 o3d_cutExtrusion = 26
+o3d_baseRotated = 27
+o3d_bossRotated = 28
+o3d_cutRotated = 29
 o3d_fillet = 34
 
 # ksDirectionTypeEnum
@@ -31,6 +34,7 @@ etThroughAll = 1
 
 # Line style for sketch geometry: 1 = main (contour) line
 STYLE_MAIN = 1
+STYLE_AXIS = 3  # axial line; used as the revolve axis
 
 # CalcMassInertiaProperties units (ldefin2d.h)
 ST_MIX_MM = 0x1
