@@ -63,3 +63,10 @@ def test_rejects_thin_wall():
     with pytest.raises(ValueError):
         build(KompasApp(kompas=FakeKompas()).new_part(orientation=TRUE).builder,
               KartridzhParams(outlet_d=77.0))
+
+
+def test_save_hides_construction_planes(tmp_path):
+    fake = FakeKompas()
+    doc = KompasApp(kompas=fake).new_part(orientation=TRUE)
+    doc.save(tmp_path / "x.m3d")
+    assert doc.doc.props["hideAllPlanes"] is True and doc.doc.props["hideAllAxis"] is True

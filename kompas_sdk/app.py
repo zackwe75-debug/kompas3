@@ -89,7 +89,16 @@ class PartDocument:
         self.part.SetMaterial(name, density)
         self.part.Update()
 
+    def hide_construction(self) -> None:
+        """Hide construction planes and axes for the whole document (view setting only)."""
+        for prop in ("hideAllPlanes", "hideAllAxis"):
+            try:
+                setattr(self.doc, prop, True)
+            except Exception:
+                pass
+
     def save(self, path: str | Path) -> Path:
+        self.hide_construction()
         path = Path(path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         if not self.doc.SaveAs(str(path)):
