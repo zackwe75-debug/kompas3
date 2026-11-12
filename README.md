@@ -13,13 +13,15 @@ plus a parametric model of the «Цилиндр» housing (АЛ8 ГОСТ 2685-7
 pip install -e .
 ```
 
-## Single-file script
+## Single-file scripts
 
-`kompas_cylinder.py` in the repo root is the whole SDK plus the cylinder model in one file
-(no install needed besides `pywin32`):
+`kompas_cylinder.py` and `kompas_korpus.py` in the repo root are the whole SDK plus one model
+in a single file (regenerate with `python tools/bundle.py korpus`)
+— no install needed besides `pywin32`:
 
 ```bat
 python kompas_cylinder.py --out C:\models\cylinder.m3d
+python kompas_korpus.py --out C:\models\korpus.m3d
 ```
 
 ## Build the cylinder
@@ -74,3 +76,16 @@ Tests run without KOMPAS using a fake COM object:
 ```bash
 pip install pytest && pytest
 ```
+
+## World coordinates and calibration
+
+KOMPAS orients sketch axes on the XZ and YZ planes non-obviously (the XZ sketch's y axis
+points along −Z). `KompasApp.calibrate()` measures the real orientation in hidden temporary
+parts (via centre of mass) and `PartBuilder.world_sketch` / `prism` / `through` then take plain
+world coordinates. `kompas_korpus.py` calibrates automatically before building.
+
+## Корпус model notes
+
+`kompas_sdk/models/korpus.py`, parameters in `KorpusParams`. X = width (122), Y = height (97),
+Z = depth (80, front view looks at Z = 80). Values marked `est.` are not dimensioned on the
+drawing and were measured off the scan; computed mass with them is ≈3.60 kg (drawing: 3.62 kg).

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import math
 from contextlib import contextmanager
-from typing import Iterable, Iterator
+from typing import Callable, Iterable, Iterator
 
 from . import constants as c
+from .orientation import Orientation
 
 Point = tuple[float, float]
 
@@ -29,15 +30,21 @@ _DEFAULT_PLANES = {"XY": c.o3d_planeXOY, "XZ": c.o3d_planeXOZ, "YZ": c.o3d_plane
 class Sketch:
     """2D drawing helpers bound to an open sketch (``ksDocument2D``)."""
 
-    def __init__(self, entity, doc2d):
+    def __init__(self, entity, doc2d, to_local: Callable[[float, float], Point] | None = None,
+                 mirrored: bool = False):
         self.entity = entity
         self.doc2d = doc2d
+        # World-sketch mode: input points are converted to KOMPAS sketch coordinates
+        self._m = to_local or (lambda a, b: (a, b))
+        self._mirrored = mirrored
 
     def line(self, p1: Point, p2: Point):
-        return self.doc2d.ksLineSeg(p1[0], p1[1], p2[0], p2[1], c.STYLE_MAIN)
+        (x1, y1), (x2, y2) = self._m(*p1), self._m(*p2)
+        return self.doc2d.ksLineSeg(x1, y1, x2, y2, c.STYLE_MAIN)
 
     def circle(self, center: Point, diameter: float):
-        return self.doc2d.ksCircle(center[0], center[1], diameter / 2.0, c.STYLE_MAIN)
+        x, y = self._m(*center)
+        return self.doc2d.ksCircle(x, y, diameter / 2.0, c.STYLE_MAIN)
 
     def circles(self, centers: Iterable[Point], diameter: float) -> None:
         for p in centers:
@@ -45,9 +52,32 @@ class Sketch:
 
     def arc(self, center: Point, p1: Point, p2: Point, ccw: bool = True):
         r = math.dist(center, p1)
-        return self.doc2d.ksArcByPoint(
-            center[0], center[1], r, p1[0], p1[1], p2[0], p2[1], 1 if ccw else -1, c.STYLE_MAIN
-        )
+        (cx, cy), (x1, y1), (x2, y2) = self._m(*center), self._m(*p1), self._m(*p2)
+        direction = 1 if ccw != self._mirrored else -1
+        return self.doc2d.ksArcByPoint(cx, cy, r, x1, y1, x2, y2, direction, c.STYLE_MAIN)
+
+    def box(self, x0: float, y0: float, x1: float, y1: float) -> None:
+        """Axis-aligned rectangle by two corners."""
+        self.polyline([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
+
+    def obround(self, center: Point, length: float, width: float, vertical: bool = False) -> None:
+        """Slot with semicircular ends; ``length`` is overall, along X (or Y if vertical)."""
+        cx, cy = center
+        r, h = width / 2.0, length / 2.0 - width / 2.0
+        if h <= 0:
+            raise ValueError("obround length must exceed width")
+        if vertical:
+            top, bot = (cx, cy + h), (cx, cy - h)
+            self.line((cx + r, cy - h), (cx + r, cy + h))
+            self.arc(top, (cx + r, cy + h), (cx - r, cy + h), ccw=True)
+            self.line((cx - r, cy + h), (cx - r, cy - h))
+            self.arc(bot, (cx - r, cy - h), (cx + r, cy - h), ccw=True)
+        else:
+            right, left = (cx + h, cy), (cx - h, cy)
+            self.line((cx - h, cy - r), (cx + h, cy - r))
+            self.arc(right, (cx + h, cy - r), (cx + h, cy + r), ccw=True)
+            self.line((cx + h, cy + r), (cx - h, cy + r))
+            self.arc(left, (cx - h, cy + r), (cx - h, cy - r), ccw=True)
 
     def polyline(self, points: list[Point], closed: bool = True) -> None:
         pts = points + [points[0]] if closed else points
@@ -67,14 +97,16 @@ class Sketch:
 class PartBuilder:
     """Creates planes, sketches, extrusions and cuts on a ``ksPart``.
 
-    Sketch coordinates on the default planes: XY -> (X, Y), XZ -> (X, Z),
-    YZ -> (Y, Z), possibly with a sign flip depending on plane orientation.
-    Keep layouts symmetric where the sign must not matter.
+    ``sketch`` uses raw KOMPAS sketch coordinates (orientation-dependent).
+    ``world_sketch``/``prism``/``through`` take world coordinates and need an
+    ``orientation`` (from ``KompasApp.calibrate``); see ``orientation.AXES``.
     """
 
-    def __init__(self, part):
+    def __init__(self, part, orientation: Orientation | None = None):
         self.part = part
+        self.orientation = orientation
         self._has_body = False
+        self._planes: dict[tuple[str, float], object] = {}
         self.features: list[tuple[str, object]] = []
 
     # --- planes -----------------------------------------------------------
@@ -113,6 +145,46 @@ class PartBuilder:
         finally:
             d.EndEdit()
         self.features.append(("sketch", entity))
+
+    # --- world-coordinate API ---------------------------------------------
+    def _world_plane(self, plane: str, at: float):
+        """Default plane, or plane parallel to it at world coordinate ``at`` on its normal."""
+        if abs(at) < 1e-9:
+            return self.plane(plane)
+        key = (plane, round(at, 6))
+        if key not in self._planes:
+            positive = (at > 0) == (self.orientation[plane].offset_sign > 0)
+            self._planes[key] = self.offset_plane(plane, abs(at), positive)
+        return self._planes[key]
+
+    @contextmanager
+    def world_sketch(self, plane: str, at: float = 0.0) -> Iterator[Sketch]:
+        """Sketch in world coordinates (see ``orientation.AXES``) at ``at`` along the normal."""
+        if self.orientation is None:
+            raise RuntimeError("world_sketch needs an orientation; call KompasApp.calibrate()")
+        plane = plane.upper()
+        o = self.orientation[plane]
+        with self.sketch(self._world_plane(plane, at)) as s:
+            s._m = lambda a, b: o.to_local(plane, a, b)
+            s._mirrored = o.flips_handedness(plane)
+            yield s
+
+    def prism(self, plane: str, n0: float, n1: float, draw: Callable[[Sketch], None],
+              cut: bool = False):
+        """Extrude (or cut) the profile from world ``n0`` to ``n1`` along the plane normal."""
+        lo, hi = sorted((n0, n1))
+        if hi - lo <= 0:
+            raise ValueError("prism needs n0 != n1")
+        with self.world_sketch(plane, (lo + hi) / 2) as s:
+            draw(s)
+        op = self.cut if cut else self.extrude
+        return op(s, hi - lo, SYMMETRIC)
+
+    def through(self, plane: str, draw: Callable[[Sketch], None]):
+        """Cut the profile through the whole part along the plane normal."""
+        with self.world_sketch(plane) as s:
+            draw(s)
+        return self.cut(s, mode=BOTH, through=True)
 
     # --- solid features ---------------------------------------------------
     def extrude(self, sketch: Sketch, depth: float, mode: str = NORMAL, through: bool = False):

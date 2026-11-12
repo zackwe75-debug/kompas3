@@ -31,3 +31,7 @@ etThroughAll = 1
 
 # Line style for sketch geometry: 1 = main (contour) line
 STYLE_MAIN = 1
+
+# CalcMassInertiaProperties units (ldefin2d.h)
+ST_MIX_MM = 0x1
+ST_MIX_KG = 0x10
