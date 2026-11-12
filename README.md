@@ -13,6 +13,15 @@ plus a parametric model of the «Цилиндр» housing (АЛ8 ГОСТ 2685-7
 pip install -e .
 ```
 
+## Single-file script
+
+`kompas_cylinder.py` in the repo root is the whole SDK plus the cylinder model in one file
+(no install needed besides `pywin32`):
+
+```bat
+python kompas_cylinder.py --out C:\models\cylinder.m3d
+```
+
 ## Build the cylinder
 
 ```bat
