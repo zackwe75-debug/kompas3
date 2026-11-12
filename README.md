@@ -44,18 +44,19 @@ doc.save("flange.m3d")
 ```
 
 `PartBuilder` provides `plane`, `offset_plane`, `offset_plane_pair`, `sketch` (line, arc,
-circle, rect, polyline), `extrude` and `cut` with modes `NORMAL`, `REVERSE`, `BOTH`, `SYMMETRIC`.
+circle, rect, polyline), `extrude` and `cut` with modes `NORMAL`, `REVERSE`, `BOTH`, `SYMMETRIC`,
+and `fillet_all_edges`.
 
 ## Cylinder model notes
 
 All dimensions live in `CylinderParams` (`kompas_sdk/models/cylinder.py`). Bore axis is Z.
 Simplifications versus the drawing:
 
-- internal casting cavities, draft angles and 2 mm casting fillets are not modelled;
+- internal casting cavities and draft angles are not modelled;
 - threads are tap-drill holes (M20 → Ø17.5, M16 → Ø14, M36 → Ø32, M62 → Ø60);
 - features shown on one face (Ø320 boss, lugs, 140×140 pad) are mirrored to the opposite face;
-- the 16 M20 holes are evenly spaced (drawing has 30°/10° pitch groups — adjust
-  `flange_hole_start_deg` / replace `bolt_circle` if exact angles are needed).
+- R2 casting fillets (note 1) are applied to every edge of the raw casting before machining;
+  if KOMPAS cannot build them it prints a warning and continues (`--no-fillets` skips them).
 
 ## Tests
 

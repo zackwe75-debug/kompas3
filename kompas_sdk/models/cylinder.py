@@ -1,15 +1,15 @@
 """«Цилиндр» (cast housing, АЛ8 ГОСТ 2685-75) — parametric model from the A1 drawing.
 
 Orientation: main bore axis = Z, origin at the part centre.
-  * end faces (16×M20 flange, 2×M62)        -> ±Z
+  * end faces (16×M20 flange, 2×M62 on R50)  -> ±Z
   * Ø320 boss with Ø260 bore, 4 lugs M36     -> ±Y
   * 140×140 pad with Ø168 port, 4×M16        -> ±X
   * Ø234 windows, 4 per face                 -> ±Y and ±X (configurable)
 
 Features that the drawing shows on one face only are built mirrored on the
 opposite face as well; this keeps every feature independent of KOMPAS plane
-orientation. Internal casting cavities, draft and 2 mm casting fillets are not
-modelled. Threads are modelled as tap-drill holes.
+orientation. R2 casting fillets are applied to the raw casting. Internal
+casting cavities and draft are not modelled. Threads are tap-drill holes.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import argparse
 import math
 from dataclasses import dataclass, field
 
-from ..part import BOTH, SYMMETRIC, PartBuilder, bolt_circle, mirror4
+from ..part import BOTH, SYMMETRIC, PartBuilder, mirror4, symmetric_circle
 
 
 @dataclass
@@ -35,16 +35,19 @@ class CylinderParams:
     bore_front_d: float = 410.0  # Ø410H11
     bore_back_d: float = 375.0  # Ø375H12
     bore_step_depth: float = 160.0
-    # 16 × M20-7H on Ø503, depth 40
-    flange_holes: int = 16
+    # 16 × M20-7H on Ø503, depth 40. Per quadrant at 10°/30°/60°/80° from the
+    # horizontal axis (drawing: 10° and 30° from the vertical, mirrored).
     flange_pcd: float = 503.0
+    flange_hole_angles: tuple[float, ...] = (10.0, 30.0, 60.0, 80.0)
     flange_hole_d: float = 17.5
     flange_hole_depth: float = 40.0
-    flange_hole_start_deg: float = 11.25
-    # 2 × M62 on the end faces
-    end_hole_x: float = 310.0
+    # 2 × M62 on the end faces, each on an R50 boss raised to the flange face
+    end_hole_x: float = 315.0
     end_hole_d: float = 60.0
     end_hole_depth: float = 60.0
+    end_boss_r: float = 50.0
+    # Unspecified casting fillets (note 1). 0 disables.
+    fillet_r: float = 2.0
     # Windows Ø234, 4 per face
     window_d: float = 234.0
     window_offset: float = 250.0
@@ -85,6 +88,12 @@ class CylinderParams:
             raise ValueError("flange holes outside the flange")
         if self.flange_pcd / 2 - self.flange_hole_d / 2 <= self.bore_front_d / 2:
             raise ValueError("flange holes break into the bore")
+        if not all(0 < ang < 90 for ang in self.flange_hole_angles):
+            raise ValueError("flange hole angles must be within (0, 90)")
+        if self.end_hole_x + self.end_boss_r >= a:
+            raise ValueError("M62 bosses outside the body")
+        if self.end_boss_r <= self.end_hole_d / 2:
+            raise ValueError("M62 boss smaller than its hole")
 
 
 def body_profile(p: CylinderParams) -> list[tuple[str, tuple]]:
@@ -117,6 +126,10 @@ def build(pb: PartBuilder, p: CylinderParams | None = None) -> PartBuilder:
         with pb.sketch(plane) as s:
             s.circle((0, 0), p.flange_d)
         pb.extrude(s, 2 * p.flange_h, SYMMETRIC)
+        # Separate sketch: the R50 circles overlap the flange circle
+        with pb.sketch(plane) as s:
+            s.circles([(p.end_hole_x, 0), (-p.end_hole_x, 0)], 2 * p.end_boss_r)
+        pb.extrude(s, 2 * p.flange_h, SYMMETRIC)
 
     # 3. Bosses on ±Y (built from the centre plane so they always merge with the body)
     with pb.sketch("XZ") as s:
@@ -133,6 +146,10 @@ def build(pb: PartBuilder, p: CylinderParams | None = None) -> PartBuilder:
         s.rect((0, 0), p.pad_size, p.pad_size)
     pb.extrude(s, a + p.pad_h, BOTH)
 
+    # Casting fillets go on the raw casting, before any machined cuts
+    if p.fillet_r > 0 and not pb.fillet_all_edges(p.fillet_r):
+        print(f"warning: R{p.fillet_r} casting fillets could not be built; continuing without them")
+
     # 6. Main bore with stepped ends
     with pb.sketch("XY") as s:
         s.circle((0, 0), p.bore_d)
@@ -146,7 +163,7 @@ def build(pb: PartBuilder, p: CylinderParams | None = None) -> PartBuilder:
     # 7. Flange holes and M62 holes on both ends
     for plane in face_planes:
         with pb.sketch(plane) as s:
-            s.circles(bolt_circle(p.flange_pcd, p.flange_holes, p.flange_hole_start_deg), p.flange_hole_d)
+            s.circles(symmetric_circle(p.flange_pcd, p.flange_hole_angles), p.flange_hole_d)
         pb.cut(s, 2 * p.flange_hole_depth, SYMMETRIC)
         with pb.sketch(plane) as s:
             s.circles([(p.end_hole_x, 0), (-p.end_hole_x, 0)], p.end_hole_d)
@@ -188,9 +205,12 @@ def main(argv: list[str] | None = None) -> None:  # pragma: no cover - needs KOM
     ap.add_argument("--out", default="cylinder.m3d", help="output .m3d path")
     ap.add_argument("--hidden", action="store_true", help="build without showing the document")
     ap.add_argument("--windows", default="YX", help="faces with Ø234 windows: Y, X, YX")
+    ap.add_argument("--no-fillets", action="store_true", help="skip the R2 casting fillets")
     args = ap.parse_args(argv)
 
     params = CylinderParams(window_faces=tuple(args.windows.upper()))
+    if args.no_fillets:
+        params.fillet_r = 0.0
     app = KompasApp(visible=not args.hidden)
     doc = app.new_part(params.name, visible=not args.hidden)
     build(doc.builder, params)

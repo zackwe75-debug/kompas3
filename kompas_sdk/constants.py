@@ -12,10 +12,12 @@ o3d_planeXOY = 1
 o3d_planeXOZ = 2
 o3d_planeYOZ = 3
 o3d_sketch = 5
+o3d_edge = 7
 o3d_planeOffset = 14
 o3d_baseExtrusion = 24
 o3d_bossExtrusion = 25
 o3d_cutExtrusion = 26
+o3d_fillet = 34
 
 # ksDirectionTypeEnum
 dtNormal = 0

@@ -155,6 +155,30 @@ class PartBuilder:
             raise RuntimeError(f"KOMPAS failed to create extrusion feature (type {kind})")
         return entity
 
+    def fillet_all_edges(self, radius: float) -> bool:
+        """Round every edge of the current body in one fillet feature.
+
+        Returns False (instead of raising) when KOMPAS cannot build it, so a
+        cosmetic fillet never aborts the whole model.
+        """
+        if radius <= 0:
+            raise ValueError("radius must be positive")
+        edges = self.part.EntityCollection(c.o3d_edge)
+        count = edges.GetCount()
+        if not count:
+            return False
+        entity = self.part.NewEntity(c.o3d_fillet)
+        d = entity.GetDefinition()
+        d.radius = radius
+        d.tangent = True
+        arr = d.array()
+        for i in range(count):
+            arr.Add(edges.GetByIndex(i))
+        if not entity.Create():
+            return False
+        self.features.append(("fillet", entity))
+        return True
+
     def update(self) -> None:
         self.part.Update()
 
@@ -167,6 +191,16 @@ def bolt_circle(diameter: float, count: int, start_deg: float = 0.0) -> list[Poi
          r * math.sin(math.radians(start_deg + i * 360.0 / count)))
         for i in range(count)
     ]
+
+
+def symmetric_circle(diameter: float, quadrant_deg: Iterable[float]) -> list[Point]:
+    """Hole centres at the given angles (0–90°, from the X axis) mirrored into all four quadrants."""
+    r = diameter / 2.0
+    pts: list[Point] = []
+    for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1)):
+        for a in quadrant_deg:
+            pts.append((sx * r * math.cos(math.radians(a)), sy * r * math.sin(math.radians(a))))
+    return pts
 
 
 def mirror4(x: float, y: float) -> list[Point]:
