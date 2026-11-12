@@ -123,6 +123,10 @@ class PartBuilder:
         d.offset = offset
         d.direction = positive
         entity.Create()
+        try:
+            entity.hidden = True  # construction plane; keep the model view clean
+        except Exception:
+            pass
         self.features.append(("plane", entity))
         return entity
 
